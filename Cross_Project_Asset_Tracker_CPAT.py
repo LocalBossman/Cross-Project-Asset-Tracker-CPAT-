@@ -1,10 +1,26 @@
+#TODO 
+#Add UI
+#Add detection for duplicate, oversized or unused files
+#Add Report UI
+#Add manual clean up
+
+
 import os
 import unreal
+import sys
+from functools import partial
+from PySide6.QtWidgets import QApplication, QWidget
+
+
+
+class CPAT:
+    pass
+
 
 # Get Unreal's content directory path
 project_content_dir = unreal.Paths.project_content_dir()
 
-def scan_project_assets(content_dir):
+def scan(content_dir):
     asset_data = []
     total_size = 0
 
@@ -28,5 +44,18 @@ def scan_project_assets(content_dir):
     
     return asset_data
 
+
+def flag_detection():
+    pass
+
+def CPAT_UI():
+    self.mainwindown
+
+def report_UI():
+    pass
+
+def manual_cleanup():
+    pass
+
 # Run it
-scan_project_assets(project_content_dir)
+scan(project_content_dir)
