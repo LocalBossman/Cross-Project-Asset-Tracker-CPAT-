@@ -1,5 +1,10 @@
+#/---Cross-Project-Asset-Tracker-CPAT---/
+
+
+
 #TODO 
 #Add UI
+#Apply functions to UI e.g. scan button runs the scan function 
 #Add detection for duplicate, oversized or unused files
 #Add Report UI
 #Add manual clean up
@@ -9,7 +14,7 @@ import os
 import unreal
 import sys
 from functools import partial
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QLabel
 
 
 
@@ -17,7 +22,7 @@ class CPAT:
     pass
 
 
-# Get Unreal's content directory path
+# Get Unreals content path
 project_content_dir = unreal.Paths.project_content_dir()
 
 def scan(content_dir):
