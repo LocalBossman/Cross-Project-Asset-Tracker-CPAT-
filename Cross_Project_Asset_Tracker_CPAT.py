@@ -1,221 +1,256 @@
 #/---Cross-Project-Asset-Tracker-CPAT---/
 
 """
-This is a standalone PySide6 application that connects with Unreal Engine to scan project assets.
-It uses QWidget layouts (QVBoxLayout, QHBoxLayout, etc.) to control positioning and color styling.
-Each part of the UI corresponds to the diagram you provided.
+This simplified version demonstrates:
+- Scanning Unreal project assets or external folders
+- Detecting duplicate assets and unused assets
+- Displaying asset info in a table
+- A placeholder "Remove" button
 """
 
-import unreal
 import os
+import re
 import sys
-from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QMainWindow, QTextEdit, QTableWidget, QTableWidgetItem
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QPalette, QColor, QFont
+import unreal  # Unreal Python API
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QTextEdit, QTableWidget, QTableWidgetItem, QFileDialog
+)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 
-
+# ------------------------Class ------------------------ #
 class CPAT(QMainWindow):
-    """
-    CPAT (Cross Project Asset Tracker)
-    - QMainWindow: provides menu bars, title bar, and a central area
-    """
 
-    #---------------------------------- Backend Logic ----------------------------------#
-    def scan(self, content_dir):
-        """
-        Scans the Unreal Content folder for .uasset files.
-        Returns a list of dictionaries with name, path, and size.
-        """
-        asset_data = []
-        total_size = 0
+    def __init__(self):
+        super().__init__()
+        #Main Window
+        self.setWindowTitle("CPAT")
+        self.setFixedSize(800, 550)
 
-        for root, dirs, files in os.walk(content_dir):
-            for file in files:
-                if file.endswith(".uasset"):
-                    file_path = os.path.join(root, file)
-                    size = os.path.getsize(file_path)
-                    total_size += size
-                    asset_data.append({
-                        "name": file,
-                        "path": file_path,
-                        "size_mb": round(size / (1024 * 1024), 2)
-                    })
+        # Default folder is the current Unreal project Content folder
+        self.selected_project_dir = unreal.Paths.project_content_dir()
 
-        unreal.log(f"Scanned {len(asset_data)} assets. "
-                   f"Total size: {round(total_size / (1024*1024), 2)} MB")
+        self.UI()
 
-        return asset_data
+# ---------------------------UI--------------------------- #
+    def UI(self):
 
-    #---------------------------------- UI Setup ----------------------------------#
-    def __init__(self, parent=None):
-        """
-        Initializes the QMainWindow, sets up colors, fonts, and layout structure.
-        """
-        super(CPAT, self).__init__(parent)
-        self.setWindowTitle("Cross Project Asset Tracker (CPAT)")
-        self.setFixedSize(QSize(900, 550))
+        central = QWidget()
+        self.setCentralWidget(central)
 
-        # Get Unreal's project content folder
-        self.project_content_dir = unreal.Paths.project_content_dir()
+        # --- Title ---
+        title = QLabel("Simple Cross Project Asset Tracker")
+        title.setFont(QFont("Arial", 14))
+        title.setAlignment(Qt.AlignCenter)  # Center the title text
 
-        # Apply a dark theme palette
-        self.set_dark_theme()
-
-        # Build all UI widgets and layouts
-        self.init_ui()
-
-    def set_dark_theme(self):
-        """Applies a dark theme to the entire window."""
-        palette = QPalette()
-        palette.setColor(QPalette.Window, QColor(20, 20, 20))        # background
-        palette.setColor(QPalette.WindowText, Qt.white)              # text
-        palette.setColor(QPalette.Button, QColor(60, 60, 60))        # buttons
-        palette.setColor(QPalette.ButtonText, Qt.white)
-        palette.setColor(QPalette.Base, QColor(30, 30, 30))          # text areas
-        palette.setColor(QPalette.Text, Qt.white)
-        self.setPalette(palette)
-
-    def init_ui(self):
-        """
-        Constructs all visual elements and arranges them using Qt layouts.
-        """
-
-        # Main container widget
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-
-        # Top layout (Title bar)
-        title_label = QLabel("Cross Project Asset Tracker (CPAT)")
-        title_label.setFont(QFont("Arial", 14, QFont.Bold))
-        title_label.setAlignment(Qt.AlignCenter)
-
-        # --- Project selection and scan buttons ---
-        button_layout = QHBoxLayout()
-        self.select_button = QPushButton("Select Projects")
+        # --- Top Buttons ---
+        # Button to select a folder to scan
+        self.select_button = QPushButton("Select Folder")
+        # Button to start scanning
         self.scan_button = QPushButton("Scan")
+        # Connect buttons to their actions
+        self.select_button.clicked.connect(self.select_folder)
         self.scan_button.clicked.connect(self.on_scan_clicked)
-        self.set_button_style(self.select_button)
-        self.set_button_style(self.scan_button)
+
+        # Layout to arrange buttons horizontally
+        button_layout = QHBoxLayout()
         button_layout.addWidget(self.select_button)
         button_layout.addWidget(self.scan_button)
 
-        # --- Summary display section (Total, Duplicates, etc.) ---
-        summary_layout = QHBoxLayout()
-        self.total_label = QLabel("Total Assets: 0")
+        # --- Summary Labels ---
+        # Labels to show total assets, duplicates, and unused assets
+        self.total_label = QLabel("Total: 0")
         self.dup_label = QLabel("Duplicates: 0")
         self.unused_label = QLabel("Unused: 0")
-        self.shared_label = QLabel("Shared: 0")
+        summary_layout = QHBoxLayout()
+        summary_layout.addWidget(self.total_label)
+        summary_layout.addWidget(self.dup_label)
+        summary_layout.addWidget(self.unused_label)
 
-        for lbl in [self.total_label, self.dup_label, self.unused_label, self.shared_label]:
-            lbl.setFont(QFont("Consolas", 11))
-            summary_layout.addWidget(lbl)
-
-        # --- Asset Table (name, project, size, status, path) ---
+        # --- Asset Table ---
+        # Table to display asset info: Name, Status, Size, Path
         self.asset_table = QTableWidget()
-        self.asset_table.setColumnCount(5)
-        self.asset_table.setHorizontalHeaderLabels(["Asset Name", "Project", "Size", "Status", "Path"])
+        self.asset_table.setColumnCount(4)
+        self.asset_table.setHorizontalHeaderLabels(["Name", "Status", "Size MB", "Path"])
         self.asset_table.horizontalHeader().setStretchLastSection(True)
-        self.asset_table.setFixedHeight(250)
-        self.asset_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #2b2b2b;
-                color: white;
-                gridline-color: gray;
-                border: 1px solid gray;
-            }
-            QHeaderView::section {
-                background-color: #444;
-                color: white;
-            }
-        """)
+        self.asset_table.setFixedHeight(250)  # Fix height for layout simplicity
 
-        # --- Bottom buttons ---
-        bottom_layout = QHBoxLayout()
-        self.remove_button = QPushButton("Remove")
-        self.ignore_button = QPushButton("Marked Read")
-        self.move_button = QPushButton("Move to Safe Folder")
-
-        for btn in [self.remove_button, self.ignore_button, self.move_button]:
-            self.set_button_style(btn)
-            bottom_layout.addWidget(btn)
-
-        # --- Output Log Box ---
+        # --- Output Log ---
+        # Text box to display messages/logs
         self.output_box = QTextEdit()
         self.output_box.setReadOnly(True)
         self.output_box.setFixedHeight(100)
 
-        # --- Main Layout Assembly (vertical stacking) ---
-        main_layout = QVBoxLayout()
-        main_layout.addWidget(title_label)
-        main_layout.addLayout(button_layout)
-        main_layout.addLayout(summary_layout)
-        main_layout.addWidget(self.asset_table)
-        main_layout.addLayout(bottom_layout)
-        main_layout.addWidget(self.output_box)
+        # --- Remove Button (Placeholder) ---
+        self.remove_button = QPushButton("Remove")
+        self.remove_button.clicked.connect(self.remove_function)
 
-        # Apply the layout to the central widget
-        central_widget.setLayout(main_layout)
+        # --- Layout Assembly ---
+        layout = QVBoxLayout()
+        layout.addWidget(title)
+        layout.addLayout(button_layout)
+        layout.addLayout(summary_layout)
+        layout.addWidget(self.asset_table)
+        layout.addWidget(self.remove_button)  # Add the remove button below the table
+        layout.addWidget(self.output_box)
+        central.setLayout(layout)
 
-    def set_button_style(self, button):
-        """Applies consistent dark styling and fixed size to buttons."""
-        button.setFixedSize(150, 40)
-        button.setStyleSheet("""
-            QPushButton {
-                background-color: #3a3a3a;
-                color: white;
-                border-radius: 8px;
-                border: 1px solid gray;
-            }
-            QPushButton:hover {
-                background-color: #505050;
-            }
-            QPushButton:pressed {
-                background-color: #282828;
-            }
-        """)
+# ------------------------Folder Select------------------------ #
+    def select_folder(self):
+        """
+        Open a folder dialog to select a folder to scan.
+        Updates self.selected_project_dir and logs the selection.
+        """
+        folder = QFileDialog.getExistingDirectory(self, "Select Folder")
+        if folder:
+            self.selected_project_dir = folder
+            self.output_box.append(f"Selected folder: {folder}")
 
-    #---------------------------------- Button Actions ----------------------------------#
+    # ------------------------ EXTERNAL FOLDER SCAN ------------------------ #
+    def scan_external_folder(self, folder):
+        """
+        Scan a folder on disk for .uasset files.
+        Does NOT detect unused assets because references require Unreal AssetRegistry.
+        """
+        assets = []
+        for root, _, files in os.walk(folder):  # Walk through folder recursively
+            for f in files:
+                if f.endswith(".uasset"):  # Only consider Unreal asset files
+                    path = os.path.join(root, f)
+                    size_mb = round(os.path.getsize(path) / (1024*1024), 2)  # Convert bytes to MB
+                    assets.append({"name": f, "path": path, "size_mb": size_mb})
+
+        # --- Duplicate detection ---
+        # Remove common suffixes like "_1", "_Copy" for duplicate comparison
+        base_groups = {}
+        for a in assets:
+            base = re.sub(r'(_\d+|_Copy.*)$', '', a["name"]).lower()
+            base_groups.setdefault(base, []).append(a)
+
+        duplicates = []
+        for group in base_groups.values():
+            if len(group) > 1:  # More than one asset with same base name
+                duplicates.extend([g["name"] for g in group])
+
+        unused = []  # Cannot detect without AssetRegistry
+        return assets, duplicates, unused
+
+# ------------------------Scan Unreal Project------------------------ #
+    def scan_unreal_project(self):
+        """
+        Scan the current Unreal project using AssetRegistry.
+        Detects actual duplicates and unused assets.
+        """
+        registry = unreal.AssetRegistryHelpers.get_asset_registry()
+        all_assets = registry.get_assets_by_path("/Game", recursive=True)
+
+        assets = []
+        name_map = {}
+
+        for a in all_assets:
+            name = str(a.asset_name)
+            path = str(a.object_path)
+            # Try to get real file size
+            try:
+                file_path = unreal.Paths.convert_relative_path_to_full(a.object_path_name)
+                size_mb = round(os.path.getsize(file_path) / (1024*1024), 2)
+            except Exception:
+                size_mb = 0
+            assets.append({"name": name, "path": path, "size_mb": size_mb})
+            name_map.setdefault(name.lower(), []).append(a)
+
+        # --- Duplicate detection ---
+        base_groups = {}
+        for n in name_map.keys():
+            base = re.sub(r'(_\d+|_Copy.*|_C|_Inst)$', '', n.lower())
+            base_groups.setdefault(base, []).extend(name_map[n])
+
+        duplicates = []
+        for group in base_groups.values():
+            if len(group) > 1:
+                duplicates.extend([str(a.asset_name) for a in group])
+
+        # --- Unused detection ---
+        # If an asset has no references (hard or soft), it is considered unused
+        unused = []
+        for a in all_assets:
+            refs = registry.get_referencers(a.package_name, recursive=True)
+            refs = [r for r in refs if r != a.package_name]
+            soft_refs = registry.get_soft_referencers(a.package_name, recursive=True)
+            refs.extend([r for r in soft_refs if r != a.package_name])
+            if not refs:
+                unused.append(a.object_path)  # Store full path
+
+        return assets, duplicates, unused
+
+    # ------------------------Scan Button------------------------ #
     def on_scan_clicked(self):
         """
-        Runs when 'Scan' is clicked. Scans project assets, updates labels, and populates the table.
+        Handle the Scan button click.
+        Determines whether to scan the current Unreal project or an external folder.
+        Updates the table and summary labels.
         """
         self.output_box.clear()
-        assets = self.scan(self.project_content_dir)
+        self.output_box.append("Scanning...")
 
-        # Update summary
-        self.total_label.setText(f"Total Assets: {len(assets)}")
-        self.dup_label.setText("Duplicates: 0")  # placeholder for future detection
-        self.unused_label.setText("Unused: 0")
-        self.shared_label.setText("Shared: 0")
+        # Decide scan mode
+        if self.selected_project_dir == unreal.Paths.project_content_dir():
+            assets, duplicates, unused = self.scan_unreal_project()
+            mode = "Unreal Project"
+        else:
+            assets, duplicates, unused = self.scan_external_folder(self.selected_project_dir)
+            mode = "External Folder"
 
-        # Populate table with first few assets
+        # Update summary labels
+        self.total_label.setText(f"Total: {len(assets)}")
+        self.dup_label.setText(f"Duplicates: {len(duplicates)}")
+        self.unused_label.setText(f"Unused: {len(unused)}")
+
+        # Fill the table
         self.asset_table.setRowCount(len(assets))
-        for row, a in enumerate(assets[:len(assets)]):
-            self.asset_table.setItem(row, 0, QTableWidgetItem(a['name']))
-            self.asset_table.setItem(row, 1, QTableWidgetItem("Current Project"))
-            self.asset_table.setItem(row, 2, QTableWidgetItem(f"{a['size_mb']} MB"))
-            self.asset_table.setItem(row, 3, QTableWidgetItem("OK"))
-            self.asset_table.setItem(row, 4, QTableWidgetItem(a['path']))
+        duplicates_lower = [d.lower() for d in duplicates]  # Normalize for comparison
 
-        # Output log
-        summary = f"Scanned {len(assets)} assets.\n"
-        self.output_box.append(summary)
+        for i, a in enumerate(assets):
+            name_lower = a["name"].lower()
+            if name_lower in duplicates_lower:
+                status = "Duplicate"
+            elif a["path"] in unused:
+                status = "Unused"
+            else:
+                status = "OK"
 
+            # Insert data into table cells
+            self.asset_table.setItem(i, 0, QTableWidgetItem(a["name"]))
+            self.asset_table.setItem(i, 1, QTableWidgetItem(status))
+            self.asset_table.setItem(i, 2, QTableWidgetItem(str(a["size_mb"])))
+            self.asset_table.setItem(i, 3, QTableWidgetItem(a["path"]))
 
-#---------------------------------- Run Code ----------------------------------#
+        self.output_box.append(f"Scan complete ({mode})")
+
+# ------------------------Remove Button------------------------ #
+
+    #This is currently a place holder button it has no function
+    def remove_function(self):
+
+        selected = self.asset_table.currentRow()
+        if selected >= 0:
+            name_item = self.asset_table.item(selected, 0)
+            if name_item:
+                asset_name = name_item.text()
+                self.output_box.append(f"Remove button clicked for: {asset_name}")
+        else:
+            self.output_box.append("No asset selected to remove.")
+
+# ------------------------Run Code------------------------ #
 def main():
-    """
-    Ensures there is only one QApplication instance and launches the CPAT window.
-    """
+    """Launch the CPAT application."""
     app = QApplication.instance()
     if not app:
         app = QApplication(sys.argv)
-
     window = CPAT()
     window.show()
     app.exec()
 
-
 if __name__ == "__main__":
     main()
-
