@@ -1,21 +1,16 @@
 #/---Cross-Project-Asset-Tracker-CPAT---/
 
-"""
-This simplified version demonstrates:
-- Scanning Unreal project assets or external folders
-- Detecting duplicate assets and unused assets
-- Displaying asset info in a table
-- A placeholder "Remove" button
-"""
+#TODO 
+#Add working function to remove button
+#try get the detection system to detect unused and duplicates better
+#improve on gui
+#
 
 import os
 import re
 import sys
-import unreal  # Unreal Python API
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QTextEdit, QTableWidget, QTableWidgetItem, QFileDialog
-)
+import unreal
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QTableWidget, QTableWidgetItem, QFileDialog
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
@@ -28,7 +23,6 @@ class CPAT(QMainWindow):
         self.setWindowTitle("CPAT")
         self.setFixedSize(800, 550)
 
-        # Default folder is the current Unreal project Content folder
         self.selected_project_dir = unreal.Paths.project_content_dir()
 
         self.UI()
@@ -39,27 +33,23 @@ class CPAT(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
 
-        # --- Title ---
-        title = QLabel("Simple Cross Project Asset Tracker")
+        #Title
+        title = QLabel("Cross Project Asset Tracker (CPAT)")
         title.setFont(QFont("Arial", 14))
         title.setAlignment(Qt.AlignCenter)  # Center the title text
 
-        # --- Top Buttons ---
-        # Button to select a folder to scan
+        #Top Buttons
         self.select_button = QPushButton("Select Folder")
-        # Button to start scanning
         self.scan_button = QPushButton("Scan")
-        # Connect buttons to their actions
+        #Connect buttons to their funcs
         self.select_button.clicked.connect(self.select_folder)
         self.scan_button.clicked.connect(self.on_scan_clicked)
 
-        # Layout to arrange buttons horizontally
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.select_button)
         button_layout.addWidget(self.scan_button)
 
-        # --- Summary Labels ---
-        # Labels to show total assets, duplicates, and unused assets
+        #Labels to show total assets, duplicates, and unused assets
         self.total_label = QLabel("Total: 0")
         self.dup_label = QLabel("Duplicates: 0")
         self.unused_label = QLabel("Unused: 0")
@@ -68,35 +58,33 @@ class CPAT(QMainWindow):
         summary_layout.addWidget(self.dup_label)
         summary_layout.addWidget(self.unused_label)
 
-        # --- Asset Table ---
-        # Table to display asset info: Name, Status, Size, Path
+        #Table to display asset info
         self.asset_table = QTableWidget()
         self.asset_table.setColumnCount(4)
         self.asset_table.setHorizontalHeaderLabels(["Name", "Status", "Size MB", "Path"])
         self.asset_table.horizontalHeader().setStretchLastSection(True)
-        self.asset_table.setFixedHeight(250)  # Fix height for layout simplicity
+        self.asset_table.setFixedHeight(250)
 
-        # --- Output Log ---
-        # Text box to display messages/logs
+        #Output log
         self.output_box = QTextEdit()
         self.output_box.setReadOnly(True)
         self.output_box.setFixedHeight(100)
 
-        # --- Remove Button (Placeholder) ---
+        #Remove Button
         self.remove_button = QPushButton("Remove")
         self.remove_button.clicked.connect(self.remove_function)
 
-        # --- Layout Assembly ---
+        #Layout Assembly
         layout = QVBoxLayout()
         layout.addWidget(title)
         layout.addLayout(button_layout)
         layout.addLayout(summary_layout)
         layout.addWidget(self.asset_table)
-        layout.addWidget(self.remove_button)  # Add the remove button below the table
+        layout.addWidget(self.remove_button)
         layout.addWidget(self.output_box)
         central.setLayout(layout)
 
-# ------------------------Folder Select------------------------ #
+#------------------------Folder Select------------------------ #
     def select_folder(self):
         """
         Open a folder dialog to select a folder to scan.
@@ -107,22 +95,18 @@ class CPAT(QMainWindow):
             self.selected_project_dir = folder
             self.output_box.append(f"Selected folder: {folder}")
 
-    # ------------------------ EXTERNAL FOLDER SCAN ------------------------ #
+#------------------------.uasset File Explorer scanner------------------------ #
     def scan_external_folder(self, folder):
-        """
-        Scan a folder on disk for .uasset files.
-        Does NOT detect unused assets because references require Unreal AssetRegistry.
-        """
+
         assets = []
-        for root, _, files in os.walk(folder):  # Walk through folder recursively
+        for root, _, files in os.walk(folder):  #Walk through folder
             for f in files:
-                if f.endswith(".uasset"):  # Only consider Unreal asset files
+                if f.endswith(".uasset"):
                     path = os.path.join(root, f)
-                    size_mb = round(os.path.getsize(path) / (1024*1024), 2)  # Convert bytes to MB
+                    size_mb = round(os.path.getsize(path) / (1024*1024), 2)
                     assets.append({"name": f, "path": path, "size_mb": size_mb})
 
-        # --- Duplicate detection ---
-        # Remove common suffixes like "_1", "_Copy" for duplicate comparison
+        #--- Duplicate detection ---
         base_groups = {}
         for a in assets:
             base = re.sub(r'(_\d+|_Copy.*)$', '', a["name"]).lower()
@@ -130,18 +114,15 @@ class CPAT(QMainWindow):
 
         duplicates = []
         for group in base_groups.values():
-            if len(group) > 1:  # More than one asset with same base name
+            if len(group) > 1:
                 duplicates.extend([g["name"] for g in group])
 
-        unused = []  # Cannot detect without AssetRegistry
+        unused = [] 
         return assets, duplicates, unused
 
 # ------------------------Scan Unreal Project------------------------ #
     def scan_unreal_project(self):
-        """
-        Scan the current Unreal project using AssetRegistry.
-        Detects actual duplicates and unused assets.
-        """
+
         registry = unreal.AssetRegistryHelpers.get_asset_registry()
         all_assets = registry.get_assets_by_path("/Game", recursive=True)
 
@@ -151,7 +132,7 @@ class CPAT(QMainWindow):
         for a in all_assets:
             name = str(a.asset_name)
             path = str(a.object_path)
-            # Try to get real file size
+
             try:
                 file_path = unreal.Paths.convert_relative_path_to_full(a.object_path_name)
                 size_mb = round(os.path.getsize(file_path) / (1024*1024), 2)
@@ -186,15 +167,10 @@ class CPAT(QMainWindow):
 
     # ------------------------Scan Button------------------------ #
     def on_scan_clicked(self):
-        """
-        Handle the Scan button click.
-        Determines whether to scan the current Unreal project or an external folder.
-        Updates the table and summary labels.
-        """
+
         self.output_box.clear()
         self.output_box.append("Scanning...")
 
-        # Decide scan mode
         if self.selected_project_dir == unreal.Paths.project_content_dir():
             assets, duplicates, unused = self.scan_unreal_project()
             mode = "Unreal Project"
@@ -202,12 +178,12 @@ class CPAT(QMainWindow):
             assets, duplicates, unused = self.scan_external_folder(self.selected_project_dir)
             mode = "External Folder"
 
-        # Update summary labels
+        # Update summary
         self.total_label.setText(f"Total: {len(assets)}")
         self.dup_label.setText(f"Duplicates: {len(duplicates)}")
         self.unused_label.setText(f"Unused: {len(unused)}")
 
-        # Fill the table
+        #Fill the output table
         self.asset_table.setRowCount(len(assets))
         duplicates_lower = [d.lower() for d in duplicates]  # Normalize for comparison
 
@@ -220,7 +196,7 @@ class CPAT(QMainWindow):
             else:
                 status = "OK"
 
-            # Insert data into table cells
+            # Insert data into output table
             self.asset_table.setItem(i, 0, QTableWidgetItem(a["name"]))
             self.asset_table.setItem(i, 1, QTableWidgetItem(status))
             self.asset_table.setItem(i, 2, QTableWidgetItem(str(a["size_mb"])))
