@@ -13,7 +13,7 @@ import shutil
 import unreal
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QTableWidget, QTableWidgetItem, QFileDialog, QMessageBox
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QColor
 
 
 #/------------------------UI Class ------------------------/#
@@ -58,11 +58,13 @@ class CPAT(QMainWindow):
         self.total_text = QLabel("Total: 0")
         self.duplicate_text = QLabel("Duplicates: 0")
         self.unused_text = QLabel("Unused: 0")
+        self.oversized_text = QLabel("Oversized: 0")
 
         summary_layout = QVBoxLayout()
         summary_layout.addWidget(self.total_text)
         summary_layout.addWidget(self.duplicate_text)
         summary_layout.addWidget(self.unused_text)
+        summary_layout.addWidget(self.oversized_text)
         summary_layout.setSpacing(5)
 
         #Fonts
@@ -70,12 +72,13 @@ class CPAT(QMainWindow):
         self.total_text.setFont(QFont("Times New Roman", 14))
         self.duplicate_text.setFont(QFont("Times New Roman", 14))
         self.unused_text.setFont(QFont("Times New Roman", 14))
+        self.oversized_text.setFont(QFont("Times New Roman", 14))
 
         #Assets table
         self.asset_table = QTableWidget(0, 4)
         self.asset_table.setHorizontalHeaderLabels(["Name", "Status", "Size MB", "Path"])
         self.asset_table.horizontalHeader().setStretchLastSection(True)
-        self.asset_table.setFixedHeight(250)
+        self.asset_table.setFixedHeight(230)
 
         #Output log
         self.output_box = QTextEdit()
@@ -87,7 +90,7 @@ class CPAT(QMainWindow):
         action_layout.addWidget(self.remove_button)
         action_layout.addWidget(self.move_button)
 
-        #Combines everything into avertical layout
+        #Combines everything into a vertical layout
         layout = QVBoxLayout()
         layout.addWidget(title)
         layout.addLayout(button_layout)
@@ -112,6 +115,8 @@ class CPAT(QMainWindow):
     def scan_external_folder(self, folder):
 
         assets = []
+        threshold = 2.0 
+
         for root, _, files in os.walk(folder):
             for f in files:
                 if f.endswith(".uasset"):
@@ -119,14 +124,20 @@ class CPAT(QMainWindow):
                     size = round(os.path.getsize(path) / (1024 * 1024), 2)
                     assets.append({"name": f, "path": path, "size_mb": size})
 
+        # --- Duplicate Detection ---
         base_groups = {}
         for a in assets:
             base = re.sub(r'(_\d+|_Copy.*)$', '', a["name"]).lower()
             base_groups.setdefault(base, []).append(a)
 
         duplicates = [g["name"] for group in base_groups.values() if len(group) > 1 for g in group]
+
+        # --- Oversized Detection ---
+        oversized = [a["name"] for a in assets if a["size_mb"] > threshold]
+
         unused = [] 
-        return assets, duplicates, unused
+
+        return assets, duplicates, unused, oversized
 
 
 #/------------------------Unreal Project Scan------------------------/#
@@ -142,14 +153,14 @@ class CPAT(QMainWindow):
             path = str(a.object_path)
             size_mb = 0
             try:
-                file_path = unreal.Paths.convert_relative_path_to_full(a.object_path_name)
-                size_mb = round(os.path.getsize(file_path) / (1024 * 1024), 2)
+                file_path = unreal.Paths.convert_relative_path_to_full(a.package_name)
+                size_mb = round(os.path.getsize(file_path + ".uasset") / (1024 * 1024), 2)
             except Exception:
                 pass
             assets.append({"name": name, "path": path, "size_mb": size_mb})
             name_map.setdefault(name.lower(), []).append(a)
 
-        #Duplicate detection
+        # --- Duplicate Detection ---
         base_groups = {}
         for n in name_map:
             base = re.sub(r'(_\d+|_Copy.*|_C|_Inst)$', '', n.lower())
@@ -157,7 +168,7 @@ class CPAT(QMainWindow):
 
         duplicates = [str(a.asset_name) for group in base_groups.values() if len(group) > 1 for a in group]
 
-        #Unused detection
+        # --- Unused Detection ---
         unused = []
         for a in all_assets:
             refs = registry.get_referencers(a.package_name, recursive=True)
@@ -165,7 +176,11 @@ class CPAT(QMainWindow):
             if not refs and not soft_refs:
                 unused.append(a.object_path)
 
-        return assets, duplicates, unused
+        # --- Oversized Detection ---
+        threshold = 2.0  # MB
+        oversized = [asset["name"] for asset in assets if asset["size_mb"] > threshold]
+
+        return assets, duplicates, unused, oversized
 
 
 #/------------------------Scan Button------------------------/#
@@ -174,17 +189,21 @@ class CPAT(QMainWindow):
         self.output_box.clear()
         self.output_box.append("Scanning...")
 
+        # Decide if scanning Unreal project or external folder
         if self.selected_project_dir == unreal.Paths.project_content_dir():
-            assets, duplicates, unused = self.scan_unreal_project()
+            assets, duplicates, unused, oversized = self.scan_unreal_project()
             mode = "Unreal Project"
         else:
-            assets, duplicates, unused = self.scan_external_folder(self.selected_project_dir)
+            assets, duplicates, unused, oversized = self.scan_external_folder(self.selected_project_dir)
             mode = "External Folder"
 
+        # Update labels
         self.total_text.setText(f"Total: {len(assets)}")
         self.duplicate_text.setText(f"Duplicates: {len(duplicates)}")
         self.unused_text.setText(f"Unused: {len(unused)}")
+        self.oversized_text.setText(f"Oversized: {len(oversized)}")
 
+        # Populate table
         self.asset_table.setRowCount(len(assets))
         for i, a in enumerate(assets):
             name_lower = a["name"].lower()
@@ -193,11 +212,29 @@ class CPAT(QMainWindow):
                 status = "Duplicate"
             elif a["path"] in unused:
                 status = "Unused"
+            elif a["name"] in [o for o in oversized]:
+                status = "Oversized"
 
-            self.asset_table.setItem(i, 0, QTableWidgetItem(a["name"]))
-            self.asset_table.setItem(i, 1, QTableWidgetItem(status))
-            self.asset_table.setItem(i, 2, QTableWidgetItem(str(a["size_mb"])))
-            self.asset_table.setItem(i, 3, QTableWidgetItem(a["path"]))
+            # Table entries
+            name_item = QTableWidgetItem(a["name"])
+            status_item = QTableWidgetItem(status)
+            size_item = QTableWidgetItem(str(a["size_mb"]))
+            path_item = QTableWidgetItem(a["path"])
+
+            # Color coding (for user testing clarity)
+            if status == "Duplicate":
+                status_item.setBackground(QColor(255, 150, 150))
+            elif status == "Unused":
+                status_item.setBackground(QColor(255, 200, 100))
+            elif status == "Oversized":
+                status_item.setBackground(QColor(255, 255, 120))
+            else:
+                status_item.setBackground(QColor(200, 255, 200))
+
+            self.asset_table.setItem(i, 0, name_item)
+            self.asset_table.setItem(i, 1, status_item)
+            self.asset_table.setItem(i, 2, size_item)
+            self.asset_table.setItem(i, 3, path_item)
 
         self.output_box.append(f"Scan complete ({mode})")
 
@@ -248,12 +285,12 @@ class CPAT(QMainWindow):
         asset_name = self.asset_table.item(row, 0).text()
         asset_path = self.asset_table.item(row, 3).text()
 
-            #Creates SafeFolder
+        # Creates SafeFolder inside the Unreal Content folder
         safe_folder_path = os.path.join(unreal.Paths.project_content_dir(), "SafeFolder")
         os.makedirs(safe_folder_path, exist_ok=True)
 
         if self.selected_project_dir != unreal.Paths.project_content_dir():
-            #Moves file externally
+            # Moves file externally
             try:
                 dest = os.path.join(safe_folder_path, os.path.basename(asset_path))
                 shutil.move(asset_path, dest)
@@ -262,7 +299,7 @@ class CPAT(QMainWindow):
             except Exception as e:
                 self.output_box.append(f"Error moving file: {e}")
         else:
-            #Moves file in unreal
+            # Moves file in Unreal project
             try:
                 dest = "/Game/SafeFolder/" + asset_name
                 unreal.EditorAssetLibrary.make_directory("/Game/SafeFolder")
