@@ -27,7 +27,6 @@ class CPAT(QMainWindow):
         self.selected_project_dir = unreal.Paths.project_content_dir()
         self.UI()
 
-
 #/---------------------------UI---------------------------/#
     def UI(self):
         central = QWidget()
@@ -68,11 +67,11 @@ class CPAT(QMainWindow):
         summary_layout.setSpacing(5)
 
         #Fonts
-        title.setFont(QFont("Times New Roman", 19))
-        self.total_text.setFont(QFont("Times New Roman", 14))
-        self.duplicate_text.setFont(QFont("Times New Roman", 14))
-        self.unused_text.setFont(QFont("Times New Roman", 14))
-        self.oversized_text.setFont(QFont("Times New Roman", 14))
+        title.setFont(QFont("Arial", 19))
+        self.total_text.setFont(QFont("Arial", 14))
+        self.duplicate_text.setFont(QFont("Arial", 14))
+        self.unused_text.setFont(QFont("Arial", 14))
+        self.oversized_text.setFont(QFont("Arial", 14))
 
         #Assets table
         self.asset_table = QTableWidget(0, 4)
