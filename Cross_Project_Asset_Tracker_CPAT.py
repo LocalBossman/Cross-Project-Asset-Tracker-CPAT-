@@ -16,6 +16,53 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QColor
 
 
+#/------------------------Tool Menu---------------------------/#
+
+class CPATmenu():
+    def __init__(self):
+        self.tool_menus = unreal.ToolMenus.get()
+        self.menuOwner = "CPAT"
+        self.tools_menu_name = "LevelEditor.MainMenu.CPAT"
+        self.CPAT_menu = None
+
+    def createMenu(self):
+        unreal.log ("creating CPAT Menu...")
+
+        mainMenu = self.tool_menus.find_menu("LevelEditor.MainMenu")
+        self.CPAT_menu = mainMenu.add_sub_menu(section_name="CPAT Tool",
+                                        name=self.menuOwner,
+                                        owner=self.menuOwner,
+                                        label="CPAT")
+        self.CPAT_menu = self.tool_menus.register_menu(self.tools_menu_name, "",  unreal.MultiBoxType.MENU, True)
+        
+        self.tool_menus.refresh_all_widgets()
+
+    def CreateMenuEntry(self):
+        unreal.log("creating CPAT entry ...")
+
+        module_name = "Cross_Project_Asset_Tracker_CPAT"
+        command = f"import {module_name}; {module_name}.main()"
+
+        menuEntry = unreal.ToolMenuEntryExtensions.init_menu_entry(
+            owner=self.menuOwner,
+            name =self.menuOwner,
+            label="CPAT",
+            tool_tip="Run CPAT",
+            command_type= unreal.ToolMenuStringCommandType.PYTHON,
+            custom_command_type= "",
+            command_string= command
+        )
+
+        icon = "AnimEditor.FilterSearch"    
+        menuEntry.set_icon("EditorStyle",icon)
+
+        self.CPAT_menu.add_menu_entry("Utils", menuEntry)
+        self.tool_menus.refresh_all_widgets()
+
+menu = CPATmenu()
+menu.createMenu()
+menu.CreateMenuEntry()
+
 #/------------------------UI Class ------------------------/#
 class CPAT(QMainWindow):
 
@@ -114,7 +161,7 @@ class CPAT(QMainWindow):
     def scan_external_folder(self, folder):
 
         assets = []
-        threshold = 2.0 
+        threshold = 10.0 
 
         for root, _, files in os.walk(folder):
             for f in files:
@@ -176,7 +223,7 @@ class CPAT(QMainWindow):
                 unused.append(a.object_path)
 
         # --- Oversized Detection ---
-        threshold = 2.0  # MB
+        threshold = 10.0 #MB
         oversized = [asset["name"] for asset in assets if asset["size_mb"] > threshold]
 
         return assets, duplicates, unused, oversized
@@ -184,6 +231,7 @@ class CPAT(QMainWindow):
 
 #/------------------------Scan Button------------------------/#
     def on_scan_clicked(self):
+
 
         self.output_box.clear()
         self.output_box.append("Scanning...")
@@ -249,9 +297,7 @@ class CPAT(QMainWindow):
         asset_name = self.asset_table.item(row, 0).text()
         asset_path = self.asset_table.item(row, 3).text()
 
-        confirm = QMessageBox.question(
-            self, "Confirm", f"Delete {asset_name}?", QMessageBox.Yes | QMessageBox.No
-        )
+        confirm = QMessageBox.question(self, "Confirm", f"Delete {asset_name}?", QMessageBox.Yes | QMessageBox.No)
         if confirm == QMessageBox.No:
             return
 
@@ -314,6 +360,9 @@ class CPAT(QMainWindow):
 #/------------------------Run Code------------------------/#
 def main():
 
+    menu = CPATmenu()
+    menu.createMenu()
+    menu.CreateMenuEntry()
     app = QApplication.instance() or QApplication(sys.argv)
     win = CPAT()
     win.show()
