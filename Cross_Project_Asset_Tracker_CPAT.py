@@ -327,6 +327,7 @@ class CPAT(QMainWindow):
 
 #/------------------------Run Code------------------------/#
 def main():
+    #Menu
     menu = CPATMenu()
     menu.create_menu()
     menu.create_menu_entry()
