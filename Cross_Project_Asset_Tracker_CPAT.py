@@ -11,7 +11,7 @@ import shutil
 import unreal
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QTableWidget, QTableWidgetItem, QFileDialog, QMessageBox)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QColor
+from PySide6.QtGui import QFont, QColor, QPalette
 
 #/------------------------Tool Menu---------------------------/#
 class CPATMenu:
@@ -60,6 +60,10 @@ class CPAT(QMainWindow):
         self.setWindowTitle("CPAT")
         self.setFixedSize(800, 550)
         self.selected_project_dir = unreal.Paths.project_content_dir()
+
+        # Apply Dark Theme
+        self.set_dark_theme()
+
         self.setup_ui()
 
 #/---------------------------UI---------------------------/#
@@ -103,11 +107,30 @@ class CPAT(QMainWindow):
         self.asset_table = QTableWidget(0, 4)
         self.asset_table.setHorizontalHeaderLabels(["Name", "Status", "Size MB", "Path"])
         self.asset_table.horizontalHeader().setStretchLastSection(True)
-        self.asset_table.setFixedHeight(230)
+        self.asset_table.setFixedHeight(210)
+        self.asset_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #2B2B2B;
+                color: white;
+                gridline-color: #555;
+                border: 1px solid #555;
+            }
+            QHeaderView::section {
+                background-color: #444;
+                color: white;
+            }
+        """)
 
         self.output_box = QTextEdit()
         self.output_box.setReadOnly(True)
         self.output_box.setFixedHeight(100)
+        self.output_box.setStyleSheet("""
+            QTextEdit {
+                background-color: #222;
+                color: white;
+                border: 1px solid #555;
+            }
+        """)
 
         action_layout = QHBoxLayout()
         action_layout.addWidget(self.remove_button)
@@ -122,6 +145,48 @@ class CPAT(QMainWindow):
         layout.addWidget(self.output_box)
 
         central.setLayout(layout)
+
+        # Style buttons last so they override palette
+        self.set_button_style(self.select_button)
+        self.set_button_style(self.scan_button)
+        self.set_button_style(self.remove_button)
+        self.set_button_style(self.move_button)
+
+#/------------------------Dark Theme------------------------/#
+
+    # Dark background
+    def set_dark_theme(self):
+        palette = QPalette()
+        palette.setColor(QPalette.Window, QColor(15, 15, 15))          
+        palette.setColor(QPalette.WindowText, Qt.white)                
+        palette.setColor(QPalette.Base, QColor(25, 25, 25))
+        palette.setColor(QPalette.AlternateBase, QColor(35, 35, 35))
+        palette.setColor(QPalette.ToolTipBase, Qt.white)
+        palette.setColor(QPalette.ToolTipText, Qt.white)
+        palette.setColor(QPalette.Text, Qt.white)
+        palette.setColor(QPalette.Button, QColor(80, 80, 80))          
+        palette.setColor(QPalette.ButtonText, Qt.white)
+        palette.setColor(QPalette.Highlight, QColor(100, 100, 150))
+        palette.setColor(QPalette.HighlightedText, Qt.black)
+        self.setPalette(palette)
+
+    def set_button_style(self, button):
+        """Applies consistent styling to buttons."""
+        button.setStyleSheet("""
+            QPushButton {
+                background-color: #5A5A5A;
+                color: white;
+                border-radius: 6px;
+                border: 1px solid #777;
+                padding: 6px;
+            }
+            QPushButton:hover {
+                background-color: #7A7A7A;
+            }
+            QPushButton:pressed {
+                background-color: #3A3A3A;
+            }
+        """)
 
 #/------------------------Folder Selection------------------------/#
     def select_folder(self):
@@ -252,7 +317,9 @@ class CPAT(QMainWindow):
                 "Oversized": QColor(255, 255, 120),
                 "Okay": QColor(200, 255, 200)
             }
-            row_items[1].setBackground(color_map[status])
+            status_item = row_items[1]
+            status_item.setBackground(color_map[status])
+            status_item.setForeground(QColor(0, 0, 0))
 
             for col, item in enumerate(row_items):
                 self.asset_table.setItem(i, col, item)
